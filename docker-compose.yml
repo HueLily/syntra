@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:17.6  # Using the version specified in your proposal
+    container_name: syntra-db
+    environment:
+      POSTGRES_USER: syntra_admin
+      POSTGRES_PASSWORD: admin_password  # Remember to change this in production
+      POSTGRES_DB: syntra_db
+    ports:
+      - "5432:5432"  # Maps container port to host port
+    volumes:
+      - ./backend/db/init:/docker-entrypoint-initdb.d  # For initialization scripts
+      - postgres_data:/var/lib/postgresql/data  # For persistent data storage
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U syntra_admin -d syntra_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:  # Named volume for data persistence
