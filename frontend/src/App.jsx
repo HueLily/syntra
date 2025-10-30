@@ -1,46 +1,7 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { runQuery, runQueryAll } from "./lib/api";
 
-const MOCK_DATA = [
-  { id: 1, name: "Acme Analytics Suite", category: "Analytics", score: 92 },
-  { id: 2, name: "Beacon Billing", category: "FinTech", score: 84 },
-  { id: 3, name: "Cinder CRM", category: "Sales", score: 88 },
-  { id: 4, name: "Delta Docs", category: "Docs", score: 77 },
-  { id: 5, name: "Echo ETL", category: "Data", score: 81 },
-  { id: 6, name: "Flux Forecast", category: "Analytics", score: 90 },
-  { id: 7, name: "Glint Gateway", category: "FinTech", score: 73 },
-  { id: 8, name: "Helio Helpdesk", category: "Support", score: 85 },
-  { id: 9, name: "Iota Insights", category: "Analytics", score: 89 },
-  { id: 10, name: "Jolt Jira Sync", category: "DevTools", score: 80 },
-];
-
-function mockSearch(query) {
-  const q = query.trim().toLowerCase();
-  if (!q) {
-    return {
-      items: [],
-      explanation: "Type a query and press Search. Results are mocked for demo.",
-      tips: ["Filtering matches on name or category (case-insensitive)."],
-    };
-  }
-
-  const items = MOCK_DATA
-    .filter(
-      (r) =>
-        r.name.toLowerCase().includes(q) ||
-        r.category.toLowerCase().includes(q)
-    )
-    .sort((a, b) => b.score - a.score);
-
-  const explanation = `Showing ${items.length} result(s) for "${query}". This mocked search filters by name/category and sorts by mocked "score" (desc).`;
-  const tips = [
-    `Filter: name/category contains "${query}" (case-insensitive).`,
-    "Sort: score descending.",
-    "To go real, replace mockSearch() with an API call.",
-  ];
-
-  return { items, explanation, tips };
-}
-// --- CSV helpers ---
+// --- CSV helpers (kept from your version) ---
 function escapeCSVValue(value) {
   if (value === null || value === undefined) return "";
   const str = String(value);
@@ -50,10 +11,8 @@ function escapeCSVValue(value) {
 }
 
 function toCSV(rows, columns) {
-  const cols = columns && columns.length
-    ? columns
-    : rows.length ? Object.keys(rows[0]) : [];
-
+  const cols =
+    columns && columns.length ? columns : rows.length ? Object.keys(rows[0]) : [];
   const header = cols.join(",");
   const lines = rows.map((r) => cols.map((c) => escapeCSVValue(r[c])).join(","));
   return [header, ...lines].join("\r\n"); // CRLF for Excel friendliness
@@ -61,10 +20,8 @@ function toCSV(rows, columns) {
 
 function downloadCSV(filename, rows, columns) {
   const csv = toCSV(rows, columns);
-  // Add UTF-8 BOM so Excel reads non-ASCII correctly
-  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
+  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" }); // UTF-8 BOM
   const url = URL.createObjectURL(blob);
-
   const a = document.createElement("a");
   a.href = url;
   a.download = filename;
@@ -78,46 +35,102 @@ function downloadCSV(filename, rows, columns) {
 export default function App() {
   const [query, setQuery] = useState("");
   const [submittedQuery, setSubmittedQuery] = useState("");
-  const { items, explanation, tips } = useMemo(
-    () => mockSearch(submittedQuery),
-    [submittedQuery]
-  );
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  // Backend response shape: { sql, data?: [], explanation?: string | object }
+  const [result, setResult] = useState(null);
+
+  // Derive columns from the first row of data (if any)
+  const columns = useMemo(() => {
+    if (result?.data && Array.isArray(result.data) && result.data.length > 0) {
+      return Object.keys(result.data[0]);
+    }
+    return [];
+  }, [result]);
 
   function onSubmit(e) {
     e.preventDefault();
-    setSubmittedQuery(query);
+    setSubmittedQuery(query.trim());
   }
 
   function onReset() {
     setQuery("");
     setSubmittedQuery("");
+    setResult(null);
+    setError(null);
   }
-  // columns to export (align with your table)
-  const columns = ["id", "name", "category", "score"];
 
   function timestamp() {
-    // e.g., 20250925-021530
     const d = new Date();
     const pad = (n) => String(n).padStart(2, "0");
-    return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+    return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(
+      d.getHours()
+    )}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
   }
 
-  function exportFilteredCSV() {
+  function exportTableCSV() {
+    if (!result?.data || result.data.length === 0) return;
     const fname = `results_${submittedQuery || "empty"}_${timestamp()}.csv`;
-    downloadCSV(fname, items, columns);
+    downloadCSV(fname, result.data, columns);
   }
 
-  function exportAllCSV() {
-    const fname = `results_all_${timestamp()}.csv`;
-    downloadCSV(fname, MOCK_DATA, columns);
+  async function exportAllCSV() {
+    if (!submittedQuery) return;
+
+    try {
+      // Fetch full dataset from backend
+      const full = await runQueryAll(submittedQuery);
+
+      // Convert backend rows + columns → array of objects for CSV
+      const cols = full.columns || [];
+      const rows = full.rows.map((r) =>
+        Object.fromEntries(cols.map((c, i) => [c, r[i]]))
+      );
+
+      const fname = `results_all_${timestamp()}.csv`;
+      downloadCSV(fname, rows, cols);
+
+    } catch (err) {
+      console.error("Export all CSV failed:", err);
+      alert("Failed to export all data. Check backend logs.");
+    }
   }
+
+
+
+  // Fetch from backend whenever submittedQuery changes (and is non-empty)
+  useEffect(() => {
+    let cancelled = false;
+    async function fetchData() {
+      if (!submittedQuery) {
+        setResult(null);
+        setError(null);
+        return;
+      }
+      setLoading(true);
+      setError(null);
+      try {
+        const data = await runQuery(submittedQuery); // POST to backend
+        if (!cancelled) setResult(data);
+      } catch (err) {
+        if (!cancelled) setError(err?.message || "Failed to fetch");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    fetchData();
+    return () => {
+      cancelled = true;
+    };
+  }, [submittedQuery]);
 
   return (
     <div className="app">
       <header className="container">
-        <h1>Query Demo (JS)</h1>
+        <h1>SynTra </h1>
         <p className="subtitle">
-          Type a query. We’ll show mocked results & a friendly explanation.
+          Type a query. We’ll call the FastAPI backend and show mocked SQL + results.
         </p>
         <form onSubmit={onSubmit} className="searchRow">
           <label htmlFor="q" className="visuallyHidden">Query</label>
@@ -125,25 +138,40 @@ export default function App() {
             id="q"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder='Try "analytics" or "FinTech"...'
+            placeholder='Try: "average order value by state"'
             aria-label="Search query"
           />
-          <button type="submit">Search</button>
+          <button type="submit" disabled={!query.trim() || loading}>
+            {loading ? "Running..." : "Run"}
+          </button>
           <button type="button" className="secondary" onClick={onReset}>
             Reset
           </button>
         </form>
+
+        {submittedQuery && (
+          <div style={{ marginTop: 8, fontSize: 12 }}>
+            <b>Query:</b> <code>{submittedQuery}</code>
+          </div>
+        )}
       </header>
 
       <main className="container grid">
+
         {/* Results table */}
+        
         <section aria-labelledby="results-heading" className="card">
+        {result?.is_mock && (
+          <div className="mockBadge">
+            <span className="badge success">MOCK DATA</span> Backend is returning mocked data for CP2
+          </div>
+        )}
           <div className="cardHeader">
             <h2 id="results-heading">Results</h2>
-            <span className="badge">{items.length}</span>
+            <span className="badge">{result?.row_count || 0}</span>
 
             <div className="actions">
-              <button type="button" className="primary" onClick={exportFilteredCSV}>
+              <button type="button" className="primary" onClick={exportTableCSV}>
                 Export table CSV
               </button>
               <button type="button" onClick={exportAllCSV}>
@@ -152,57 +180,66 @@ export default function App() {
             </div>
           </div>
 
-          {items.length === 0 ? (
-            <p className="muted">No results. Try searching for “analytics”.</p>
-          ) : (
+          {result?.rows && result.rows.length > 0 ? (
             <div className="tableWrapper">
               <table>
                 <thead>
                   <tr>
-                    <th style={{ width: "56px" }}>ID</th>
-                    <th>Name</th>
-                    <th>Category</th>
-                    <th>Score</th>
+                    {result.columns.map((col) => (
+                      <th key={col}>{col}</th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {items.map((r) => (
-                    <tr key={r.id}>
-                      <td>{r.id}</td>
-                      <td>{r.name}</td>
-                      <td>{r.category}</td>
-                      <td>{r.score}</td>
+                  {result.rows.map((row, idx) => (
+                    <tr key={idx}>
+                      {row.map((cell, i) => (
+                        <td key={i}>{cell}</td>
+                      ))}
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
+          ) : (
+            <p className="muted">No results yet. Submit a query to see data.</p>
           )}
         </section>
 
-        {/* Explanation panel */}
+
+        {/* Guidance panel */}
         <aside aria-labelledby="explain-heading" className="card">
-          <h2 id="explain-heading">Explanation</h2>
-          <p>{explanation}</p>
+          <h2 id="explain-heading">What’s happening</h2>
           <ul>
-            {tips.map((t, i) => (
-              <li key={i}>{t}</li>
-            ))}
+            <li>Your query is POSTed to <code>{import.meta.env.VITE_API_BASE_URL}/query</code>.</li>
+            <li>Backend returns: <code>{`{ sql, data[], explanation }`}</code>.</li>
+            <li>We render the SQL, explanation, and a dynamic table.</li>
+            <li>“Export table CSV” downloads the current results with UTF-8 BOM (Excel-friendly).</li>
           </ul>
 
-          <details className="details">
-            <summary>How to wire a real API later</summary>
-            <ol>
-              <li>Replace <code>mockSearch()</code> with an <code>async</code> function.</li>
-              <li>Call your endpoint with <code>fetch</code> in a <code>useEffect</code> on <code>submittedQuery</code>.</li>
-              <li>Map API data to <code>{`{ id, name, category, score }`}</code> and render.</li>
-            </ol>
+          <details className="details" style={{ marginTop: 8 }}>
+            <summary>Troubleshooting</summary>
+            <ul>
+              <li>
+                <b>CORS error?</b> Ensure FastAPI has <code>CORSMiddleware</code> allowing
+                <code>http://localhost:5173</code>.
+              </li>
+              <li>
+                <b>404?</b> Make sure your backend route is <code>@router.post("/query")</code> (or
+                change the frontend URL to match).
+              </li>
+              <li>
+                <b>Undefined API base?</b> Frontend must have
+                <code>.env.development</code> with <code>VITE_API_BASE_URL</code>, then restart
+                <code>npm run dev</code>.
+              </li>
+            </ul>
           </details>
         </aside>
       </main>
 
       <footer className="container footer">
-        <small>Demo app (React + Vite, JavaScript). All data and scores are mocked.</small>
+        <small>Demo app (React + Vite, JavaScript). CP2 uses mocked backend data.</small>
       </footer>
     </div>
   );
