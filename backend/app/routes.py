@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException
+<<<<<<< HEAD
 from pydantic import BaseModel
 from .security import SecurityContext
 from .openai_helper import generate_sql_query
@@ -56,3 +57,25 @@ async def execute_query(request: QueryRequest):
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+=======
+from .openai_helper import QueryRequest, generate_sql_query
+from dotenv import load_dotenv
+
+load_dotenv() 
+
+router = APIRouter()
+
+@router.post("/query")
+async def execute_query(request: QueryRequest):
+    try:
+        # Generate SQL using OpenAI
+        response = await generate_sql_query(request)
+        print("OpenAI response:", response)
+        if not response:
+            raise HTTPException(status_code=500, detail="Failed to generate SQL query")
+        return response
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+        
+>>>>>>> eedd1ad (add open ai helper, utils for sql, sql schema)

@@ -6,4 +6,10 @@ psycopg2-binary==2.9.10
 sqlglot==27.17.0
 python-dotenv==1.0.0
 openai==1.3.0
+<<<<<<< HEAD
+=======
+httpx<0.28
+
+asyncpg
+>>>>>>> eedd1ad (add open ai helper, utils for sql, sql schema)
 

@@ -18,6 +18,24 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+<<<<<<< HEAD
+=======
+  backend:
+    build: ./backend
+    container_name: syntra-backend
+    env_file:
+      - ./backend/.env
+    environment:
+      # Optional override if not in .env
+      DATABASE_URL: postgresql+asyncpg://syntra_admin:admin_password@postgres:5432/syntra_db
+      
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+>>>>>>> eedd1ad (add open ai helper, utils for sql, sql schema)
 
 volumes:
   postgres_data:  # Named volume for data persistence
