@@ -38,6 +38,12 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
+<<<<<<< HEAD
+=======
+  const [role, setRole] = useState("analyst");
+  const [region, setRegion] = useState("Midwest");
+  const [darkMode, setDarkMode] = useState(false);
+>>>>>>> 22f198e (add checkpoint 4)
   // Backend response shape: { sql, data?: [], explanation?: string | object }
   const [result, setResult] = useState(null);
 
@@ -48,6 +54,10 @@ export default function App() {
     }
     return [];
   }, [result]);
+
+  function toggleTheme() {
+    setDarkMode(!darkMode);
+  }
 
   function onSubmit(e) {
     e.preventDefault();
@@ -126,9 +136,12 @@ export default function App() {
   }, [submittedQuery]);
 
   return (
-    <div className="app">
+    <div className= {darkMode ? "app dark" : "app light"}>
       <header className="container">
         <h1>SynTra </h1>
+        <button type="button" onClick={toggleTheme} style={{ marginLeft: 12 }}>
+          {darkMode ? "☀️ Light Mode" : "🌙 Dark Mode"}
+        </button>
         <p className="subtitle">
           Type a query. We’ll call the FastAPI backend and show mocked SQL + results.
         </p>
@@ -206,7 +219,31 @@ export default function App() {
           )}
         </section>
 
-
+        {/* SQL Preview Panel with Tooltip */}
+        {result?.sql && (
+          <section className="card" style={{ marginTop: 12 }}>
+            <h3>
+              Generated SQL
+              <span
+                title="This SQL was generated from your natural-language prompt using backend guardrails."
+                style={{ marginLeft: 8, cursor: "help" }}
+              >
+                ℹ️
+              </span>
+            </h3>
+            <pre className="sqlPreview">{result.sql}</pre>
+            <button
+              type="button"
+              onClick={() => {
+                navigator.clipboard.writeText(result.sql);
+                alert("SQL copied to clipboard!");
+              }}
+              style={{ marginTop: 8 }}
+            >
+              Copy SQL
+            </button>
+          </section>
+        )}
         {/* Guidance panel */}
         <aside aria-labelledby="explain-heading" className="card">
           <h2 id="explain-heading">What’s happening</h2>

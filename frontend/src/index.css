@@ -124,3 +124,23 @@ tbody tr:hover { background: #121824; }
   color: #071018;
   font-weight: 600;
 }
+
+.app.light {
+  background-color: #ffffff;
+  color: #000000;
+}
+
+.app.dark {
+  background-color: #121212;
+  color: #f4f4f4;
+}
+
+.app.dark .card {
+  background-color: #1e1e1e;
+  border: 1px solid #333;
+}
+
+.app.light .card {
+  background-color: #f9f9f9;
+  border: 1px solid #ddd;
+}
